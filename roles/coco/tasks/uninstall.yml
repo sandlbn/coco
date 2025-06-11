@@ -1,0 +1,166 @@
+---
+# Uninstall Intel TDX and Confidential Containers components
+
+# Remove attestation components (if they were installed)
+- name: Remove attestation components
+  block:
+    - name: Remove KBS components (DCAP)
+      shell: |
+        cd {{ ansible_env.HOME }}/trustee/kbs/config/kubernetes/
+        export DEPLOYMENT_DIR=custom_pccs
+        kubectl delete -k ./base
+      when:
+        - not coco.kbs.ita_enabled
+        - trustee_dir.stat.exists
+      become: true
+      ignore_errors: yes
+      environment:
+        DEPLOYMENT_DIR: custom_pccs
+
+    - name: Remove Intel Trust Authority components
+      shell: |
+        cd {{ ansible_env.HOME }}/trustee/kbs/config/kubernetes/
+        kubectl delete -k ./ita
+      when:
+        - coco.kbs.ita_enabled
+        - trustee_dir.stat.exists
+      become: true
+      ignore_errors: yes
+
+    - name: Wait for KBS namespace to be removed
+      shell: |
+        kubectl wait --for=delete namespace/coco-tenant --timeout=60s
+      become: true
+      ignore_errors: yes
+
+  when: (inventory_hostname in groups['master_nodes'] or (groups['all'] | length == 1)) and coco.attestation.enabled
+
+# Remove CcRuntime resources
+- name: Check if operator directory exists
+  stat:
+    path: "{{ ansible_env.HOME }}/operator/config/samples/ccruntime/rancher/"
+  register: rancher_dir
+
+- name: Remove Rancher customization
+  shell: |
+    cd {{ ansible_env.HOME }}/operator/config/samples/ccruntime/rancher
+    kubectl delete -k .
+  when:
+    - inventory_hostname in groups['master_nodes'] or (groups['all'] | length == 1)
+    - rancher_dir.stat.exists
+  become: true
+  ignore_errors: yes
+
+# Remove CoCo operator
+- name: Check if operator directory exists
+  stat:
+    path: "{{ ansible_env.HOME }}/operator/"
+  register: operator_dir
+
+- name: Remove CoCo operator from local directory
+  shell: |
+    cd {{ ansible_env.HOME }}/operator
+    kubectl delete -k config/default
+  when:
+    - inventory_hostname in groups['master_nodes'] or (groups['all'] | length == 1)
+    - operator_dir.stat.exists
+  become: true
+  ignore_errors: yes
+
+- name: Wait for CoCo operator namespace to be removed
+  shell: |
+    kubectl wait --for=delete namespace/confidential-containers-system --timeout=60s
+  when: inventory_hostname in groups['master_nodes'] or (groups['all'] | length == 1)
+  become: true
+  ignore_errors: yes
+
+# Remove runtime classes
+- name: Remove Kata runtime classes
+  shell: |
+    kubectl delete runtimeclass --all --selector=kata-containers
+  when: inventory_hostname in groups['master_nodes'] or (groups['all'] | length == 1)
+  become: true
+  ignore_errors: yes
+
+# Remove node labels
+- name: Remove worker node labels for CoCo
+  shell: kubectl label node {{ inventory_hostname }} "node-role.kubernetes.io/worker-" --overwrite
+  when:
+    - inventory_hostname in groups['worker_nodes'] or (groups['all'] | length == 1)
+  delegate_to: "{{ groups['master_nodes'][0] if groups['master_nodes'] is defined else inventory_hostname }}"
+  become: true
+  ignore_errors: yes
+
+# Stop and disable fake containerd service
+- name: Stop fake containerd service
+  systemd:
+    name: containerd
+    state: stopped
+    enabled: no
+  become: true
+  ignore_errors: yes
+
+- name: Remove fake containerd service file
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/containerd.service
+    - /usr/local/bin/fake-containerd
+  become: true
+
+- name: Reload systemd daemon after removing service
+  systemd:
+    daemon_reexec: yes
+    daemon_reload: yes
+  become: true
+
+# Clean up installation directories
+- name: Remove installation directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/tdx"
+    - "{{ ansible_env.HOME }}/operator"
+    - "{{ ansible_env.HOME }}/trustee"
+  become: true
+
+# Restart RKE services to ensure clean state
+- name: Restart rke2-server on master nodes only
+  systemd:
+    name: rke2-server
+    state: restarted
+  when:
+    - inventory_hostname in groups['master_nodes'] | default([]) or (groups['all'] | length == 1)
+  become: true
+  ignore_errors: yes
+
+- name: Restart rke2-agent on dedicated worker nodes only
+  systemd:
+    name: rke2-agent
+    state: restarted
+  when:
+    - inventory_hostname in groups['worker_nodes'] | default([])
+    - inventory_hostname not in groups['master_nodes'] | default([])
+    - groups['all'] | length > 1 # Not a single-node deployment
+  become: true
+  ignore_errors: yes
+
+# Final verification
+- name: Verify cleanup completion
+  debug:
+    msg: |
+      Uninstallation completed!
+
+      Removed components:
+      - Confidential Containers operator
+      - Kata runtime classes
+      - KBS attestation service (if enabled)
+      - Fake containerd service
+      - Installation directories
+
+      To verify complete removal:
+      - Check namespaces: kubectl get ns | grep -E 'coco-tenant|confidential-containers-system'
+      - Check runtime classes: kubectl get runtimeclass | grep kata
+      - Check pods: kubectl get pods -A | grep -E 'cc-operator|kbs'

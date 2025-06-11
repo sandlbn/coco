@@ -1,0 +1,19 @@
+---
+- name: check if kubernetes is installed
+  shell: command -v kubectl
+  register: kubectl_check
+  ignore_errors: true
+  when: inventory_hostname in groups['master_nodes']
+
+- name: fail if kubernetes is not installed
+  fail:
+    msg: "Kubernetes is not installed. Please install Kubernetes first."
+  when: inventory_hostname in groups['master_nodes'] and kubectl_check.rc != 0
+
+- name: install confidential containers with TDX
+  import_tasks: install.yml
+  tags: install
+
+- name: uninstall confidential containers with TDX
+  import_tasks: uninstall.yml
+  tags: uninstall

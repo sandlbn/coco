@@ -1,0 +1,13 @@
+coco:
+  tdx:
+    version: "1.5"
+    kernel:
+      type: "generic" # or "intel" for non-upstreamed/development features
+  operator:
+    version: "v0.13.0"
+  attestation:
+    enabled: true
+    version: "v0.12.0"
+  kbs:
+    enabled: true
+    ita_enabled: false # Intel Trust Authority-based attestation
