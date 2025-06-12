@@ -571,7 +571,7 @@
   tags:
     - kyverno
     - kyverno-policy
-    
+
 # Apply TDX runtime and lock to specific services
 - name: Configure TDX for 5G services
   block:
@@ -585,30 +585,26 @@
       copy:
         content: |
           #!/bin/bash
-          set -e  # Exit on error
+          set -e
           
           NAMESPACE="aether-5gc"
-          RUNTIME_CLASS="kata-qemu"  # Using TDX-specific runtime
+          RUNTIME_CLASS="kata-qemu"
           LOCK_ANNOTATION_KEY="intel.com/locked"
           SERVICES=("nrf" "pcf" "amf" "smf")
           
           echo "🚀 Starting TDX configuration for 5G services..."
           
-          # Function to check if deployment exists
           deployment_exists() {
               kubectl get deployment "$1" -n "$NAMESPACE" &>/dev/null
           }
           
-          # Function to apply runtime class
           apply_runtime_class() {
               local deploy=$1
               echo "   🔧 Applying runtime class to $deploy..."
               
-              # Get current runtime class
               CURRENT_RUNTIME=$(kubectl get deployment "$deploy" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.runtimeClassName}' 2>/dev/null || echo "none")
               echo "   Current runtime class: ${CURRENT_RUNTIME:-none}"
               
-              # Apply runtime class
               if kubectl patch deployment "$deploy" -n "$NAMESPACE" --type='strategic' -p "{\"spec\":{\"template\":{\"spec\":{\"runtimeClassName\":\"$RUNTIME_CLASS\"}}}}"; then
                   echo "   ✅ Runtime class applied successfully"
                   return 0
@@ -618,15 +614,12 @@
               fi
           }
           
-          # Function to apply lock annotation
           apply_lock_annotation() {
               local deploy=$1
               echo "   🔒 Applying lock annotation to $deploy..."
               
-              # Apply the annotation
               if kubectl annotate deployment "$deploy" -n "$NAMESPACE" "$LOCK_ANNOTATION_KEY=true" --overwrite; then
-                  # Verify it was applied
-                  sleep 2  # Small delay to ensure annotation is persisted
+                  sleep 2
                   local applied_value=$(kubectl get deployment "$deploy" -n "$NAMESPACE" -o jsonpath="{.metadata.annotations.intel\.com/locked}" 2>/dev/null)
                   if [ "$applied_value" == "true" ]; then
                       echo "   ✅ Lock annotation verified: $applied_value"
@@ -641,7 +634,6 @@
               fi
           }
           
-          # Main processing loop
           FAILED_SERVICES=()
           SUCCESS_SERVICES=()
           
@@ -655,26 +647,22 @@
                   continue
               fi
               
-              # Apply runtime class
               if ! apply_runtime_class "$svc"; then
                   FAILED_SERVICES+=("$svc (runtime)")
                   continue
               fi
               
-              # Apply lock annotation
               if ! apply_lock_annotation "$svc"; then
                   FAILED_SERVICES+=("$svc (annotation)")
                   continue
               fi
               
-              # Restart deployment
               echo "   🔁 Restarting $svc deployment..."
               kubectl rollout restart deployment "$svc" -n "$NAMESPACE"
               
               SUCCESS_SERVICES+=("$svc")
           done
           
-          # Wait for all rollouts to complete
           echo ""
           echo "⏳ Waiting for rollouts to complete..."
           for svc in "${SUCCESS_SERVICES[@]}"; do
@@ -682,12 +670,10 @@
               kubectl rollout status deployment "$svc" -n "$NAMESPACE" --timeout=300s || echo "   ⚠️  Rollout timeout for $svc"
           done
           
-          # Final verification with proper escaping
           echo ""
           echo "📊 Final deployment status:"
           kubectl get deployments -n "$NAMESPACE" -o custom-columns='NAME:.metadata.name,LOCKED:.metadata.annotations.intel\.com/locked,RUNTIME:.spec.template.spec.runtimeClassName'
           
-          # Double-check annotations are actually there
           echo ""
           echo "🔍 Verifying annotations in detail:"
           for svc in "${SERVICES[@]}"; do
@@ -695,16 +681,15 @@
               kubectl get deployment "$svc" -n "$NAMESPACE" -o jsonpath='{.metadata.annotations}' | jq -r '."intel.com/locked" // "not set"' 2>/dev/null || echo "error checking"
           done
           
-          # Summary
           echo ""
           echo "🎯 TDX configuration summary:"
-          echo "   ✅ Successfully configured: ${#SUCCESS_SERVICES[@]} services"
-          if [ ${#SUCCESS_SERVICES[@]} -gt 0 ]; then
+          echo "   ✅ Successfully configured: ${SUCCESS_SERVICES[@]} services"
+          if [ ${SUCCESS_SERVICES[@]} -gt 0 ]; then
               printf '      - %s\n' "${SUCCESS_SERVICES[@]}"
           fi
           
-          if [ ${#FAILED_SERVICES[@]} -gt 0 ]; then
-              echo "   ❌ Failed: ${#FAILED_SERVICES[@]} services"
+          if [ ${FAILED_SERVICES[@]} -gt 0 ]; then
+              echo "   ❌ Failed: ${FAILED_SERVICES[@]} services"
               printf '      - %s\n' "${FAILED_SERVICES[@]}"
               exit 1
           fi
@@ -749,7 +734,7 @@
   tags:
     - tdx-services
     - 5g-config
-
+    
 # Cleanup handler for failed deployments
 - name: Add cleanup instructions
   debug:
