@@ -507,76 +507,6 @@
   tags:
     - kyverno
 
-# Configure Kyverno policy for locked TDX deployments
-- name: Configure TDX deployment lock policy
-  block:
-    - name: Create Kyverno policy directory
-      file:
-        path: "{{ ansible_env.HOME }}/kyverno-policies"
-        state: directory
-        mode: "0755"
-
-    - name: Create TDX deployment lock policy
-      copy:
-        dest: "{{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml"
-        content: |
-          {% raw %}
-          apiVersion: kyverno.io/v1
-          kind: ClusterPolicy
-          metadata:
-            name: deny-updates-to-locked-tdx-deployments
-          spec:
-            validationFailureAction: Enforce
-            background: true
-            rules:
-              - name: deny-update-if-locked
-                match:
-                  any:
-                  - resources:
-                      kinds:
-                        - Deployment
-                      namespaces:
-                        - aether-5gc
-                      operations:
-                        - UPDATE
-                preconditions:
-                  all:
-                  # Only apply if the deployment already has the lock annotation
-                  - key: "{{ request.oldObject.metadata.annotations.\"intel.com/locked\" || '' }}"
-                    operator: Equals
-                    value: "true"
-                  # And ensure we're not just changing annotations
-                  - key: "{{ request.object.spec }}"
-                    operator: NotEquals
-                    value: "{{ request.oldObject.spec }}"
-                validate:
-                  message: "This Deployment is locked with TDX protection. Unlock it by removing the 'intel.com/locked' annotation."
-                  deny: {}
-          {% endraw %}
-
-    - name: Apply TDX deployment lock policy
-      shell: kubectl apply -f {{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml
-      args:
-        executable: /bin/bash
-      register: policy_apply
-
-    - name: Verify policy is active
-      shell: kubectl get clusterpolicy deny-updates-to-locked-tdx-deployments
-      args:
-        executable: /bin/bash
-      register: policy_status
-
-    - name: Display policy status
-      debug:
-        msg: |
-          TDX Deployment Lock Policy Status:
-          {{ policy_status.stdout }}
-
-  when: inventory_hostname in groups['master_nodes']
-  tags:
-    - kyverno
-    - kyverno-policy
-
 # Apply TDX runtime and lock to specific services
 - name: Configure TDX for 5G services
   block:
@@ -740,6 +670,76 @@
     - tdx-services
     - 5g-config
 
+# Configure Kyverno policy for locked TDX deployments
+- name: Configure TDX deployment lock policy
+  block:
+    - name: Create Kyverno policy directory
+      file:
+        path: "{{ ansible_env.HOME }}/kyverno-policies"
+        state: directory
+        mode: "0755"
+
+    - name: Create TDX deployment lock policy
+      copy:
+        dest: "{{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml"
+        content: |
+          {% raw %}
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: deny-updates-to-locked-tdx-deployments
+          spec:
+            validationFailureAction: Enforce
+            background: true
+            rules:
+              - name: deny-update-if-locked
+                match:
+                  any:
+                  - resources:
+                      kinds:
+                        - Deployment
+                      namespaces:
+                        - aether-5gc
+                      operations:
+                        - UPDATE
+                preconditions:
+                  all:
+                  # Only apply if the deployment already has the lock annotation
+                  - key: "{{ request.oldObject.metadata.annotations.\"intel.com/locked\" || '' }}"
+                    operator: Equals
+                    value: "true"
+                  # And ensure we're not just changing annotations
+                  - key: "{{ request.object.spec }}"
+                    operator: NotEquals
+                    value: "{{ request.oldObject.spec }}"
+                validate:
+                  message: "This Deployment is locked with TDX protection. Unlock it by removing the 'intel.com/locked' annotation."
+                  deny: {}
+          {% endraw %}
+
+    - name: Apply TDX deployment lock policy
+      shell: kubectl apply -f {{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml
+      args:
+        executable: /bin/bash
+      register: policy_apply
+
+    - name: Verify policy is active
+      shell: kubectl get clusterpolicy deny-updates-to-locked-tdx-deployments
+      args:
+        executable: /bin/bash
+      register: policy_status
+
+    - name: Display policy status
+      debug:
+        msg: |
+          TDX Deployment Lock Policy Status:
+          {{ policy_status.stdout }}
+
+  when: inventory_hostname in groups['master_nodes']
+  tags:
+    - kyverno
+    - kyverno-policy
+    
 # Cleanup handler for failed deployments
 - name: Add cleanup instructions
   debug:
