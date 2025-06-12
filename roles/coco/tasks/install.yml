@@ -542,7 +542,7 @@
                   deny:
                     conditions:
                       all:
-                        - key: "{{ request.object.metadata.annotations.\"intel.com/locked\" || '' }}"
+                        - key: "{{ `{{ request.object.metadata.annotations.\"intel.com/locked\" || '' }}` }}"
                           operator: Equals
                           value: "true"
         dest: "{{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml"
