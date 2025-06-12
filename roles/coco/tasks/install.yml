@@ -652,7 +652,7 @@
 
   when: 
     - inventory_hostname in groups['master_nodes']
-    - coco.configure_5g_services | default(false)
+    - coco.configure_5g_services | default(true)
   tags:
     - tdx-services
     - 5g-config
