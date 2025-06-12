@@ -11,3 +11,5 @@ coco:
   kbs:
     enabled: true
     ita_enabled: false # Intel Trust Authority-based attestation
+  coco:
+    configure_5g_services: true
