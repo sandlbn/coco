@@ -539,14 +539,19 @@
                         - aether-5gc
                       operations:
                         - UPDATE
+                preconditions:
+                  all:
+                  # Only apply if the deployment already has the lock annotation
+                  - key: "{{ request.oldObject.metadata.annotations.\"intel.com/locked\" || '' }}"
+                    operator: Equals
+                    value: "true"
+                  # And ensure we're not just changing annotations
+                  - key: "{{ request.object.spec }}"
+                    operator: NotEquals
+                    value: "{{ request.oldObject.spec }}"
                 validate:
                   message: "This Deployment is locked with TDX protection. Unlock it by removing the 'intel.com/locked' annotation."
-                  deny:
-                    conditions:
-                      all:
-                        - key: "{{ request.object.metadata.annotations.\"intel.com/locked\" || '' }}"
-                          operator: Equals
-                          value: "true"
+                  deny: {}
           {% endraw %}
 
     - name: Apply TDX deployment lock policy
@@ -734,7 +739,7 @@
   tags:
     - tdx-services
     - 5g-config
-    
+
 # Cleanup handler for failed deployments
 - name: Add cleanup instructions
   debug:
