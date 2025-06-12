@@ -518,7 +518,9 @@
 
     - name: Create TDX deployment lock policy
       copy:
+        dest: "{{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml"
         content: |
+          {% raw %}
           apiVersion: kyverno.io/v1
           kind: ClusterPolicy
           metadata:
@@ -542,10 +544,10 @@
                   deny:
                     conditions:
                       all:
-                        - key: "{{ `{{ request.object.metadata.annotations.\"intel.com/locked\" || '' }}` }}"
+                        - key: "{{ request.object.metadata.annotations.\"intel.com/locked\" || '' }}"
                           operator: Equals
                           value: "true"
-        dest: "{{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml"
+          {% endraw %}
 
     - name: Apply TDX deployment lock policy
       shell: kubectl apply -f {{ ansible_env.HOME }}/kyverno-policies/tdx-deployment-lock-policy.yaml
